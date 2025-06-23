@@ -17,15 +17,21 @@ const threatAlerts = new Map();
 
 class RedAlertBotWithButtons {
   constructor() {
+    // Check for required environment variables
     if (!process.env.TELEGRAM_BOT_TOKEN) {
       throw new Error('TELEGRAM_BOT_TOKEN is required in .env file');
     }
+
+    // Add environment info for debugging
+    console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🏠 Platform: ${process.platform}`);
+    console.log(`📦 Node version: ${process.version}`);
 
     this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
     this.rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
     this.solanaConnection = new Connection(this.rpcUrl, 'confirmed');
     
-    // Initialize services
+    // Initialize advanced services
     this.transactionMonitor = new TransactionMonitor(this.rpcUrl);
     this.threatAnalyzer = new ThreatAnalyzer(process.env.OPENAI_API_KEY);
     this.emergencyActions = new EmergencyActions(this.rpcUrl);
@@ -1739,5 +1745,52 @@ Please choose a number between 1-${wallets.length}
 
 // Start the enhanced bot with buttons
 console.log('🔧 Initializing Enhanced RedAlert v2.0 with Interactive Controls...');
+
+// Ensure only one instance
+process.title = 'redalert-bot';
+
+// Handle process signals
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught Exception:', error);
+  // Don't exit - log and continue
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit - log and continue
+});
+
 const redAlertWithButtons = new RedAlertBotWithButtons();
-redAlertWithButtons.start().catch(console.error);
+redAlertWithButtons.start().catch((error) => {
+  console.error('💥 Fatal startup error:', error);
+  
+  // Keep minimal HTTP server running even on fatal errors
+  if (process.env.NODE_ENV === 'production') {
+    const http = require('http');
+    const port = process.env.PORT || 3000;
+    
+    const emergencyServer = http.createServer((req, res) => {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'error',
+        service: 'RedAlert Security Bot',
+        error: 'Bot startup failed',
+        timestamp: new Date().toISOString()
+      }));
+    });
+    
+    emergencyServer.listen(port, () => {
+      console.log(`🚨 Emergency server running on port ${port}`);
+    });
+  }
+});
