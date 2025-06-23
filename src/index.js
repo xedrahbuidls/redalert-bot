@@ -1644,52 +1644,6 @@ Please choose a number between 1-${wallets.length}
         console.log('🖼️  Octopus image: NOT FOUND (add redalert-octopus.jpg to src/images/)');
       }
       
-      // Start HTTP server for Render (required for Web Service)
-      if (process.env.NODE_ENV === 'production') {
-        const http = require('http');
-        const server = http.createServer((req, res) => {
-          if (req.url === '/health' || req.url === '/') {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-              status: 'healthy',
-              service: 'RedAlert Security Bot',
-              version: '2.0.0',
-              uptime: process.uptime(),
-              timestamp: new Date().toISOString(),
-              monitoring: {
-                totalWallets: this.transactionMonitor.getMonitoringStats().totalWallets,
-                aiAnalysis: process.env.OPENAI_API_KEY ? 'enabled' : 'disabled',
-                emergencySystem: 'ready'
-              }
-            }));
-          } else if (req.url === '/stats') {
-            const stats = this.transactionMonitor.getMonitoringStats();
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              service: 'RedAlert Security Bot',
-              stats: stats,
-              alerts: threatAlerts.size,
-              users: userWallets.size,
-              timestamp: new Date().toISOString()
-            }));
-          } else {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-              error: 'Not Found',
-              service: 'RedAlert Security Bot',
-              endpoints: ['/health', '/stats']
-            }));
-          }
-        });
-        
-        const port = process.env.PORT || 3000;
-        server.listen(port, '0.0.0.0', () => {
-          console.log(`🌐 HTTP server running on port ${port}`);
-          console.log(`📊 Health check: http://localhost:${port}/health`);
-          console.log(`📈 Stats endpoint: http://localhost:${port}/stats`);
-        });
-      }
-      
       // Start the bot
       await this.bot.launch();
       console.log('🐙 Enhanced RedAlert Bot v2.0 is now online!');
@@ -1700,12 +1654,10 @@ Please choose a number between 1-${wallets.length}
       process.once('SIGINT', () => {
         console.log('🛑 Stopping Enhanced RedAlert Bot...');
         this.bot.stop('SIGINT');
-        process.exit(0);
       });
       process.once('SIGTERM', () => {
         console.log('🛑 Stopping Enhanced RedAlert Bot...');
         this.bot.stop('SIGTERM');
-        process.exit(0);
       });
       
     } catch (error) {
