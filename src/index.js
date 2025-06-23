@@ -52,7 +52,7 @@ class RedAlertBotWithButtons {
       if (ctx.telegram && ctx.from) {
         // Regular Telegraf context
         telegram = ctx.telegram;
-        chatId = ctx.from.id;
+        chatId = ctx.chat ? ctx.chat.id : ctx.from.id;
       } else if (ctx.telegram && ctx.chatId) {
         // Custom context with telegram instance
         telegram = ctx.telegram;
@@ -103,7 +103,7 @@ class RedAlertBotWithButtons {
         
         if (ctx.telegram && ctx.from) {
           telegram = ctx.telegram;
-          chatId = ctx.from.id;
+          chatId = ctx.chat ? ctx.chat.id : ctx.from.id;
         } else if (ctx.telegram) {
           telegram = ctx.telegram;
           chatId = ctx.from ? ctx.from.id : ctx.chatId;
@@ -192,9 +192,38 @@ class RedAlertBotWithButtons {
   }
 
   setupCommands() {
-    // Enhanced start command with buttons
+    // Enhanced start command with group detection
     this.bot.start(async (ctx) => {
-      const welcomeMessage = `*Welcome to RedAlert v2.0!* 🐙
+      const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+      const isPrivate = ctx.chat.type === 'private';
+      
+      if (isGroup) {
+        const welcomeMessage = `*RedAlert Group Protection Activated!* 🚨🐙
+
+I'm now protecting this group from wallet threats!
+
+*🛡️ Group Features:*
+• **Community wallet monitoring**
+• **Public threat alerts** 
+• **Shared security notifications**
+• **Emergency response for all members**
+
+*📋 Group Commands:*
+/groupstatus - Check group protection
+/addgroupwallet <address> - Monitor community wallet
+/alerts - Recent group threats
+/help - All commands
+
+*🐙 Your group is now under octopus protection!*
+
+*Note: Use private chat with me for personal wallet monitoring.*`;
+
+        await this.sendWithOctopus(ctx, welcomeMessage);
+        
+        // Log group activation
+        console.log(`Group activated: ${ctx.chat.title} (${ctx.chat.id}) by ${ctx.from.username || ctx.from.id}`);
+      } else {
+        const welcomeMessage = `*Welcome to RedAlert v2.0!* 🐙
 
 I'm your AI-powered wallet security guardian with real-time threat detection!
 
@@ -209,11 +238,67 @@ I'm your AI-powered wallet security guardian with real-time threat detection!
 • Enhanced visual alerts
 • Faster emergency response
 • Improved AI detection
+• **Group chat support**
 
 *🐙 Choose an action below to start protecting your bags!*`;
 
-      await this.sendWithOctopus(ctx, welcomeMessage);
-      console.log(`New user started: ${ctx.from.id} (${ctx.from.username || 'no username'})`);
+        await this.sendWithOctopus(ctx, welcomeMessage);
+      }
+      
+      console.log(`New user started: ${ctx.from.id} (${ctx.from.username || 'no username'}) in ${isGroup ? 'group' : 'private'}`);
+    });
+
+    // Group-specific status command
+    this.bot.command('groupstatus', async (ctx) => {
+      const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+      
+      if (!isGroup) {
+        await ctx.reply('🔒 This command is only available in groups. Use /status for private chat.');
+        return;
+      }
+      
+      await this.handleGroupStatus(ctx);
+    });
+
+    // Group wallet monitoring
+    this.bot.command('addgroupwallet', async (ctx) => {
+      const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+      
+      if (!isGroup) {
+        await ctx.reply('🔒 This command is only available in groups. Use /addwallet for private chat.');
+        return;
+      }
+      
+      await this.handleAddGroupWallet(ctx);
+    });
+
+    // Enhanced add wallet command with group/private detection
+    this.bot.command('addwallet', async (ctx) => {
+      const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+      
+      if (isGroup) {
+        await ctx.reply('🔒 For privacy, personal wallets should be added in private chat. Use /addgroupwallet for community wallets or message me privately.');
+        return;
+      }
+      
+      const args = ctx.message.text.split(' ');
+      if (args.length >= 2) {
+        await this.handleAddWallet(ctx, args[1]);
+      } else {
+        await this.sendWithOctopus(
+          ctx,
+          `*Add Wallet* 🔍
+
+Please provide a wallet address to monitor:
+
+*Example:* \`7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU\`
+
+*Reply with your Solana wallet address*`,
+          Markup.inlineKeyboard([
+            [Markup.button.callback('⬅️ Back to Menu', 'main_menu')]
+          ])
+        );
+      }
     });
 
     // Text-based wallet addition (for direct commands)
@@ -238,9 +323,15 @@ Please provide a wallet address to monitor:
       }
     });
 
-    // Quick command shortcuts
+    // Quick command shortcuts with group awareness
     this.bot.command('status', async (ctx) => {
-      await this.handleStatus(ctx);
+      const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+      
+      if (isGroup) {
+        await this.handleGroupStatus(ctx);
+      } else {
+        await this.handleStatus(ctx);
+      }
     });
 
     this.bot.command('emergency', async (ctx) => {
@@ -251,18 +342,35 @@ Please provide a wallet address to monitor:
       await this.handleAlerts(ctx);
     });
 
-    // Handle text messages (for wallet addresses)
+    // Handle text messages (for wallet addresses) with group awareness
     this.bot.on('text', async (ctx) => {
       const text = ctx.message.text;
+      const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+      
+      // In groups, only respond to @mentions or direct replies
+      if (isGroup) {
+        const botUsername = this.bot.botInfo?.username;
+        const isMentioned = text.includes(`@${botUsername}`) || ctx.message.reply_to_message?.from?.id === this.bot.botInfo?.id;
+        
+        if (!isMentioned) {
+          return; // Don't respond to every message in groups
+        }
+      }
       
       // Check if it's a Solana address
       if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(text)) {
-        await this.handleAddWallet(ctx, text);
+        if (isGroup) {
+          await ctx.reply('🔒 For privacy, please add personal wallets in private chat. Use /addgroupwallet for community wallets.');
+        } else {
+          await this.handleAddWallet(ctx, text);
+        }
       } else if (/^\d+$/.test(text)) {
-        // Handle wallet removal numbers
-        await this.handleWalletRemovalNumber(ctx, parseInt(text));
-      } else {
-        // Unknown command - show menu
+        // Handle wallet removal numbers (private only)
+        if (!isGroup) {
+          await this.handleWalletRemovalNumber(ctx, parseInt(text));
+        }
+      } else if (!isGroup) {
+        // Unknown command - show menu (private only)
         await this.sendWithOctopus(
           ctx,
           `*I didn't understand that command* 🤔
@@ -422,6 +530,37 @@ Example: \`7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU\`
     this.bot.action('about', async (ctx) => {
       await ctx.answerCbQuery();
       await this.handleAbout(ctx);
+    });
+
+    // Group-specific callbacks
+    this.bot.action('group_status', async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.handleGroupStatus(ctx);
+    });
+
+    this.bot.action('private_chat', async (ctx) => {
+      await ctx.answerCbQuery();
+      const botUsername = this.bot.botInfo?.username || 'redalert_bot';
+      
+      await ctx.editMessageText(
+        `*🔒 Private Chat Instructions*\n\n` +
+        `For personal wallet monitoring and private features:\n\n` +
+        `1. Click this link: @${botUsername}\n` +
+        `2. Or search "${botUsername}" in Telegram\n` +
+        `3. Start a private conversation\n` +
+        `4. Use /addwallet for personal monitoring\n\n` +
+        `*🛡️ Privacy Protection:*\n` +
+        `• Personal wallets stay private\n` +
+        `• Individual threat alerts\n` +
+        `• Personal emergency tools\n\n` +
+        `🐙 Your private octopus awaits!`,
+        { 
+          parse_mode: 'Markdown',
+          reply_markup: Markup.inlineKeyboard([
+            [Markup.button.url('💬 Start Private Chat', `https://t.me/${botUsername}`)]
+          ]).reply_markup
+        }
+      );
     });
 
     // Remove wallet callback
@@ -1087,32 +1226,81 @@ Your wallet may be under active attack!
   }
 
   async handleHelp(ctx) {
-    const helpMessage = `*❓ RedAlert Help Center ❓*
+    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+    
+    let helpMessage;
+    
+    if (isGroup) {
+      helpMessage = `*❓ RedAlert Group Commands ❓*
+
+*🛡️ Group Protection:*
+• /addgroupwallet <address> - Monitor community wallet
+• /groupstatus - Check group protection status
+• /alerts - View recent group threats
+• /emergency - Group emergency response
+
+*📋 Information:*
+• /help - Show this help
+• /about - About RedAlert
+
+*🔒 Privacy Commands (use in private):*
+• Message me privately for personal wallet monitoring
+• Personal wallets should not be shared in groups
+
+*🐙 Group Features:*
+• **Community wallet monitoring** for all members
+• **Public threat alerts** when risks are detected
+• **Shared security notifications**
+• **Admin alerts** for critical threats
+
+*💡 Tips for Groups:*
+• Add project treasury wallets
+• Monitor community fund wallets
+• Share threat alerts with all members
+• Use @redalert_bot to mention me directly
+
+*🐙 Your group octopus is protecting everyone!*`;
+    } else {
+      helpMessage = `*❓ RedAlert Help Center ❓*
 
 *🚨 Command Guide:*
 
-**🛡️ Protection:**
-• Add Wallet - Start monitoring
-• View Status - Check protection
-• Emergency - Crisis response
+**🛡️ Personal Protection:**
+• /addwallet <address> - Start monitoring your wallet
+• /status - Check your protection status
+• /removewallet - Stop monitoring a wallet
 
 **🧠 Analysis:**  
-• AI Analysis - Deep security scan
-• View Alerts - Recent threats
-• Monitor Stats - System status
+• /analyze - Deep AI security scan
+• /alerts - View your recent threats
+• /emergency - Crisis response tools
+
+**👥 Group Features:**
+• Add me to groups for community protection
+• Use /addgroupwallet in groups for public wallets
+• Personal wallets stay private (use DM)
 
 **⚙️ Controls:**
-• Settings - Configure alerts
-• Help - This guide
-• About - Bot information
+• /settings - Configure your alerts
+• /help - This guide
+• /about - Bot information
 
-*🐙 Your octopus is here to help!*
+*🐙 Your personal octopus guardian!*
 
 *📚 Need more help?*`;
+    }
 
-    await this.sendWithOctopus(
-      ctx,
-      helpMessage,
+    const helpButtons = isGroup ? 
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback('📊 Group Status', 'group_status'),
+          Markup.button.callback('🚨 Group Alerts', 'alerts')
+        ],
+        [
+          Markup.button.callback('💬 Private Chat', 'private_chat'),
+          Markup.button.callback('📖 About', 'about')
+        ]
+      ]) :
       Markup.inlineKeyboard([
         [
           Markup.button.callback('🆘 Emergency Help', 'emergency_contact'),
@@ -1125,8 +1313,9 @@ Your wallet may be under active attack!
         [
           Markup.button.callback('⬅️ Back to Menu', 'main_menu')
         ]
-      ])
-    );
+      ]);
+
+    await this.sendWithOctopus(ctx, helpMessage, helpButtons);
   }
 
   async handleAbout(ctx) {
