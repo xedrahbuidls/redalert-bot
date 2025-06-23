@@ -4,8 +4,9 @@
   "description": "RedAlert - Solana Wallet Security Bot",
   "main": "dist/index.js",
   "scripts": {
-    "start": "node src/index.js",
+     "start": "node src/server.js",
     "dev": "nodemon src/index.js",
+    "build": "echo 'No build step required'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
