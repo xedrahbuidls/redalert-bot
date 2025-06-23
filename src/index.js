@@ -1688,6 +1688,22 @@ Please choose a number between 1-${wallets.length}
           console.log(`📊 Health check: http://localhost:${port}/health`);
           console.log(`📈 Stats endpoint: http://localhost:${port}/stats`);
         });
+
+        // Keep-alive mechanism to prevent Render free tier sleep
+        setInterval(async () => {
+          try {
+            // Self-ping to stay awake (only works if we have external URL)
+            const renderUrl = process.env.RENDER_EXTERNAL_URL;
+            if (renderUrl) {
+              const response = await fetch(`${renderUrl}/health`);
+              console.log(`🔄 Keep-alive ping: ${response.status}`);
+            } else {
+              console.log('🔄 Keep-alive: No RENDER_EXTERNAL_URL set');
+            }
+          } catch (error) {
+            console.log('🔄 Keep-alive failed:', error.message);
+          }
+        }, 14 * 60 * 1000); // Ping every 14 minutes
       }
       
       // Start the bot
